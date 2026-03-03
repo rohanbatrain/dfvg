@@ -50,12 +50,15 @@ export default function App() {
     const [runHistory, setRunHistory] = useState<RunInfo[]>([])
     const [projectPath, setProjectPath] = useState('')
     const [mode, setMode] = useState<ProcessingMode>('FULL')
+    const [hwAccel, setHwAccel] = useState(true)
 
     // ── UI ────────────────────────────────────
     const [toast, setToast] = useState<string | null>(null)
     const [networkInfo, setNetworkInfo] = useState<{ ip: string; port: number; url: string } | null>(null)
     const [showMobile, setShowMobile] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [dismissedPaths, setDismissedPaths] = useState<Set<string>>(new Set())
+    const [apiReady, setApiReady] = useState(!isElectron) // non-Electron: ready immediately
 
     const showToast = useCallback((msg: string) => {
         setToast(msg)
@@ -67,38 +70,43 @@ export default function App() {
         if (isElectron) {
             window.electronAPI!.getApiPort().then(port => {
                 setApiBase(`http://127.0.0.1:${port}`)
+                setApiReady(true)
             })
         }
     }, [])
 
     // ── Network Info ─────────────────────────
     useEffect(() => {
+        if (!apiReady) return
         fetch(`${apiBase}/network-info`)
             .then(r => r.json()).then(setNetworkInfo).catch(() => { })
-    }, [apiBase])
+    }, [apiBase, apiReady])
 
     // ── Drive Polling (every 3s) ─────────────
     useEffect(() => {
+        if (!apiReady) return
         let active = true
         const poll = () => {
             fetch(`${apiBase}/drives`).then(r => r.json())
                 .then((drives: DetectedDrive[]) => {
                     if (!active) return
+                    // Filter out user-dismissed drives
+                    const filtered = drives.filter(d => !dismissedPaths.has(d.path))
                     // Check for new drives
                     const prev = detectedDrives.map(d => d.path)
-                    const newDrives = drives.filter(d => !prev.includes(d.path))
+                    const newDrives = filtered.filter(d => !prev.includes(d.path))
                     if (newDrives.length > 0) {
                         const d = newDrives[0]
                         showToast(`${d.label} detected${d.is_dji ? ' (DJI)' : ''} — ${d.video_count} clips`)
                     }
-                    setDetectedDrives(drives)
+                    setDetectedDrives(filtered)
                 })
                 .catch(() => { })
         }
         poll()
         const id = setInterval(poll, 3000)
         return () => { active = false; clearInterval(id) }
-    }, [apiBase]) // intentionally not including detectedDrives to avoid infinite loop
+    }, [apiBase, apiReady]) // intentionally not including detectedDrives/dismissedPaths to avoid infinite loop
 
     // ── Job Polling ──────────────────────────
     useEffect(() => {
@@ -155,6 +163,7 @@ export default function App() {
     const handleDismissDrive = async (drive: DetectedDrive) => {
         try {
             await fetch(`${apiBase}/drives/dismiss?path=${encodeURIComponent(drive.path)}`, { method: 'POST' })
+            setDismissedPaths(prev => new Set(prev).add(drive.path))
             setDetectedDrives(prev => prev.filter(d => d.path !== drive.path))
         } catch { /* ignore */ }
     }
@@ -271,7 +280,7 @@ export default function App() {
             case 'runs':
                 return <RunsPanel runHistory={runHistory} jobHistory={jobHistory} />
             case 'settings':
-                return <Settings mode={mode} onModeChange={setMode} />
+                return <Settings mode={mode} onModeChange={setMode} hwAccel={hwAccel} onHwAccelChange={setHwAccel} />
             default:
                 return null
         }

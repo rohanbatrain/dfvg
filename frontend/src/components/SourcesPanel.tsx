@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { FolderOpen, Info, Image, HardDrive, Usb, ArrowRight } from 'lucide-react'
+import { useState, useCallback } from 'react'
+import { FolderOpen, Info, Image, HardDrive, Usb, ArrowRight, Download } from 'lucide-react'
 import { DetectedDrive } from '../types'
 import { DriveCard } from './DriveCard'
 
@@ -14,9 +14,50 @@ interface SourcesPanelProps {
 
 export function SourcesPanel({ detectedDrives, onImportDrive, onEjectDrive, onDismissDrive, onScanPath, onBrowse }: SourcesPanelProps) {
     const [manualPath, setManualPath] = useState('')
+    const [isDragOver, setIsDragOver] = useState(false)
+
+    const handleDrop = useCallback((e: React.DragEvent) => {
+        e.preventDefault()
+        setIsDragOver(false)
+        // In Electron, dropped folders/files have a path property
+        const files = e.dataTransfer.files
+        if (files.length > 0) {
+            const file = files[0] as File & { path?: string }
+            const path = file.path || file.name
+            if (path) {
+                setManualPath(path)
+                onScanPath(path)
+            }
+        }
+    }, [onScanPath])
+
+    const handleDragOver = useCallback((e: React.DragEvent) => {
+        e.preventDefault()
+        setIsDragOver(true)
+    }, [])
+
+    const handleDragLeave = useCallback((e: React.DragEvent) => {
+        e.preventDefault()
+        setIsDragOver(false)
+    }, [])
 
     return (
-        <div className="max-w-5xl space-y-8 animate-fade-in">
+        <div className="max-w-5xl space-y-8 animate-fade-in"
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}>
+
+            {/* Full-screen drop overlay */}
+            {isDragOver && (
+                <div className="fixed inset-0 z-50 ml-64 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="flex flex-col items-center gap-4 rounded-2xl border-2 border-dashed border-blue-500/50 bg-blue-950/20 px-16 py-12">
+                        <Download className="h-12 w-12 text-blue-400 animate-bounce" />
+                        <p className="text-lg font-semibold text-blue-300">Drop folder to scan</p>
+                        <p className="text-xs text-zinc-500">Release to scan footage directory</p>
+                    </div>
+                </div>
+            )}
+
             {/* Connected Sources */}
             <section>
                 <div className="flex items-center gap-3 mb-5">
@@ -42,7 +83,7 @@ export function SourcesPanel({ detectedDrives, onImportDrive, onEjectDrive, onDi
                         ))}
                     </div>
                 ) : (
-                    /* Gap 3: Polished empty state */
+                    /* Polished empty state */
                     <div className="relative overflow-hidden rounded-2xl border border-dashed border-zinc-800 bg-gradient-to-br from-zinc-950 to-zinc-900/50 p-10 text-center">
                         {/* Decorative background circles */}
                         <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-orange-500/5 blur-2xl" />
@@ -72,7 +113,7 @@ export function SourcesPanel({ detectedDrives, onImportDrive, onEjectDrive, onDi
             {/* Divider */}
             <div className="flex items-center gap-4">
                 <div className="flex-1 h-px bg-zinc-800" />
-                <span className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest">or</span>
+                <span className="text-[10px] font-semibold text-zinc-600 uppercase tracking-widest">or drag a folder here</span>
                 <div className="flex-1 h-px bg-zinc-800" />
             </div>
 

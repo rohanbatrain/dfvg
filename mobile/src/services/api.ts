@@ -59,10 +59,10 @@ export const dfvgApi = {
         `${API_BASE_URL}/thumbnails/${encodeURIComponent(projectPath)}/${encodeURIComponent(filename)}`,
 
     // Ingestion
-    ingestPlan: (source: string, destination: string) =>
-        api.post('/ingest/plan', { source_path: source, destination_path: destination }),
-    ingestExecute: (plan: any) =>
-        api.post('/ingest/execute', plan),
+    ingestPlan: (source: string, destination: string, mode: string = 'FULL') =>
+        api.post('/ingest', { source_path: source, project_path: destination, mode }),
+    ingestExecute: (source: string, destination: string, mode: string = 'FULL', processAfter: boolean = true) =>
+        api.post('/ingest/execute', { source_path: source, project_path: destination, mode, process_after: processAfter }),
 };
 
 export default api;

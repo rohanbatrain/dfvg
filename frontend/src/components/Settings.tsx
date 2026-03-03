@@ -1,12 +1,14 @@
-import { Monitor, Cpu, Sparkles, ToggleRight } from 'lucide-react'
+import { Monitor, Cpu, Sparkles } from 'lucide-react'
 import { ProcessingMode } from '../types'
 
 interface SettingsProps {
     mode: ProcessingMode
     onModeChange: (mode: ProcessingMode) => void
+    hwAccel: boolean
+    onHwAccelChange: (enabled: boolean) => void
 }
 
-export function Settings({ mode, onModeChange }: SettingsProps) {
+export function Settings({ mode, onModeChange, hwAccel, onHwAccelChange }: SettingsProps) {
     const modes: { key: ProcessingMode; label: string; color: string; activeBg: string; activeBorder: string; desc: string; badge?: string }[] = [
         {
             key: 'FULL',
@@ -67,7 +69,7 @@ export function Settings({ mode, onModeChange }: SettingsProps) {
                     ))}
                 </div>
 
-                {/* Hardware Acceleration */}
+                {/* Hardware Acceleration — proper toggle switch */}
                 <div className="flex items-center justify-between p-4 rounded-xl bg-zinc-900 border border-zinc-800">
                     <div className="space-y-1">
                         <div className="flex items-center gap-2 text-zinc-200 font-medium text-sm">
@@ -76,8 +78,11 @@ export function Settings({ mode, onModeChange }: SettingsProps) {
                         </div>
                         <p className="text-xs text-zinc-500">Use VideoToolbox (macOS) or NVENC for faster encoding.</p>
                     </div>
-                    <button className="transition-colors text-green-500 hover:text-white">
-                        <ToggleRight className="h-8 w-8 fill-current" />
+                    <button onClick={() => onHwAccelChange(!hwAccel)}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-white/25 ${hwAccel ? 'bg-emerald-500' : 'bg-zinc-700'}`}
+                        role="switch"
+                        aria-checked={hwAccel}>
+                        <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${hwAccel ? 'translate-x-5' : 'translate-x-0'}`} />
                     </button>
                 </div>
 
