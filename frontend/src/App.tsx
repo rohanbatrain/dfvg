@@ -118,6 +118,21 @@ export default function App() {
         }
     }, [apiReady, initialLoad])
 
+    // ── Keyboard Shortcuts ───────────────────
+    useEffect(() => {
+        const handler = (e: KeyboardEvent) => {
+            const isMeta = e.metaKey || e.ctrlKey
+            if (!isMeta) return
+            switch (e.key) {
+                case 'i': e.preventDefault(); setTab('sources'); setSubView('main'); break
+                case 'r': e.preventDefault(); setTab('runs'); setSubView('main'); fetchRunHistory(); break
+                case ',': e.preventDefault(); setTab('settings'); setSubView('main'); break
+            }
+        }
+        window.addEventListener('keydown', handler)
+        return () => window.removeEventListener('keydown', handler)
+    }, [])
+
     // ── Job Polling ──────────────────────────
     useEffect(() => {
         if (!activeJob || ['completed', 'failed'].includes(activeJob.status)) return
