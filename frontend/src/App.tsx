@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Layout } from './components/Layout'
 import { Sidebar } from './components/Sidebar'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { Settings } from './components/Settings'
 import { SourcesPanel } from './components/SourcesPanel'
 import { IngestWizard } from './components/IngestWizard'
@@ -53,16 +54,17 @@ export default function App() {
     const [hwAccel, setHwAccel] = useState(true)
 
     // ── UI ────────────────────────────────────
-    const [toast, setToast] = useState<string | null>(null)
+    const [toasts, setToasts] = useState<string[]>([])
     const [networkInfo, setNetworkInfo] = useState<{ ip: string; port: number; url: string } | null>(null)
     const [showMobile, setShowMobile] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [dismissedPaths, setDismissedPaths] = useState<Set<string>>(new Set())
     const [apiReady, setApiReady] = useState(!isElectron) // non-Electron: ready immediately
+    const [initialLoad, setInitialLoad] = useState(true)
 
     const showToast = useCallback((msg: string) => {
-        setToast(msg)
-        setTimeout(() => setToast(null), 3000)
+        setToasts(prev => [...prev.slice(-2), msg]) // keep max 3
+        setTimeout(() => setToasts(prev => prev.slice(1)), 3000)
     }, [])
 
     // ── API Base Resolution ──────────────────
@@ -107,6 +109,14 @@ export default function App() {
         const id = setInterval(poll, 3000)
         return () => { active = false; clearInterval(id) }
     }, [apiBase, apiReady]) // intentionally not including detectedDrives/dismissedPaths to avoid infinite loop
+
+    // Mark initial load complete after first drive poll
+    useEffect(() => {
+        if (apiReady && initialLoad) {
+            const t = setTimeout(() => setInitialLoad(false), 500)
+            return () => clearTimeout(t)
+        }
+    }, [apiReady, initialLoad])
 
     // ── Job Polling ──────────────────────────
     useEffect(() => {
@@ -188,7 +198,7 @@ export default function App() {
         try {
             const res = await fetch(`${apiBase}/jobs`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ input_path: scanPath, mode })
+                body: JSON.stringify({ input_path: scanPath, mode, hw_accel: hwAccel })
             })
             if (!res.ok) throw new Error('Failed to start job')
             const data: JobResponse = await res.json()
@@ -216,6 +226,10 @@ export default function App() {
         // Only preserve processing sub-view when switching to projects tab
         if (!(subView === 'processing' && newTab === 'projects')) {
             setSubView('main')
+        }
+        // Auto-refresh run history when entering projects or runs tab
+        if (newTab === 'projects' || newTab === 'runs') {
+            fetchRunHistory()
         }
     }
 
@@ -363,7 +377,9 @@ export default function App() {
                 activeJob={activeJob}
             />
             <Layout activeTab={tab}>
-                {renderContent()}
+                <ErrorBoundary>
+                    {renderContent()}
+                </ErrorBoundary>
 
                 {/* Loading overlay for scan */}
                 {isScanning && (
@@ -382,14 +398,16 @@ export default function App() {
                 )}
             </Layout>
 
-            {/* Toast */}
-            {toast && (
-                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[110] animate-[fadeIn_0.2s_ease-out]">
-                    <div className="rounded-xl bg-zinc-800 border border-zinc-700 px-5 py-2.5 text-sm text-zinc-200 shadow-2xl font-medium">
-                        {toast}
+            {/* Toast Stack */}
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[110] flex flex-col-reverse gap-2">
+                {toasts.map((t, i) => (
+                    <div key={`${t}-${i}`} className="animate-[fadeIn_0.2s_ease-out] transition-all">
+                        <div className="rounded-xl bg-zinc-800 border border-zinc-700 px-5 py-2.5 text-sm text-zinc-200 shadow-2xl font-medium whitespace-nowrap">
+                            {t}
+                        </div>
                     </div>
-                </div>
-            )}
+                ))}
+            </div>
 
             {/* Mobile Connect Modal */}
             {showMobile && networkInfo && (
