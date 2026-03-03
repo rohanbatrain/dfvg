@@ -1,0 +1,35 @@
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0*   Trying 127.0.0.1:8000...
+* Connected to 127.0.0.1 (127.0.0.1) port 8000
+> GET / HTTP/1.1
+> Host: 127.0.0.1:8000
+> User-Agent: curl/8.7.1
+> Accept: */*
+> 
+* Request completely sent off
+< HTTP/1.1 200 OK
+< date: Thu, 12 Feb 2026 14:58:15 GMT
+< server: uvicorn
+< content-type: text/html; charset=utf-8
+< accept-ranges: bytes
+< content-length: 430
+< last-modified: Thu, 12 Feb 2026 14:52:16 GMT
+< etag: "e37687f0d0300243b8bb1802884f528d"
+< 
+{ [430 bytes data]
+100   430  100   430    0     0  35669      0 --:--:-- --:--:-- --:--:-- 39090
+* Connection #0 to host 127.0.0.1 left intact
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DFVG Dashboard</title>
+    <script type="module" crossorigin src="/assets/index-DKJDtOVj.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BD-ghlOL.css">
+  </head>
+  <body class="bg-gray-950 text-white">
+    <div id="root"></div>
+  </body>
+</html>

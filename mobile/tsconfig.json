@@ -1,0 +1,12 @@
+{
+    "compilerOptions": {
+        "strict": true,
+        "jsx": "react-native",
+        "moduleResolution": "bundler",
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "resolveJsonModule": true
+    },
+    "extends": "expo/tsconfig.base"
+}

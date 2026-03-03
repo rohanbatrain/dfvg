@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dfvg"
+version = "0.1.0"
+description = "DJI Footage Variant Generator"
+readme = "README.md"
+requires-python = ">=3.8"
+license = "MIT"
+authors = [
+    { name = "Rohan", email = "rohan@example.com" },
+]
+dependencies = [
+    "click>=8.0.0",
+    "rich>=10.0.0",
+    "pydantic>=2.0.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+dfvg = "dfvg.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["dfvg"]
