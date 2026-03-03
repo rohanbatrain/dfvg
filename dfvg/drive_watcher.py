@@ -28,6 +28,8 @@ class DetectedDrive(BaseModel):
     is_dji: bool                  # True if validated as DJI card
     detected_at: str              # ISO timestamp
     video_count: int = 0          # number of MP4s found in DCIM
+    total_bytes: int = 0          # total storage capacity
+    used_bytes: int = 0           # used storage
 
 
 class DriveWatcher:
@@ -121,12 +123,24 @@ class DriveWatcher:
                                          if f.is_file() and f.suffix.lower() in {".mp4", ".mov"}]
                                     )
 
+                        # Get storage info
+                        try:
+                            import shutil
+                            usage = shutil.disk_usage(vol_path)
+                            total_bytes = usage.total
+                            used_bytes = usage.used
+                        except Exception:
+                            total_bytes = 0
+                            used_bytes = 0
+
                         drive = DetectedDrive(
                             path=vol_path,
                             label=vol.name,
                             is_dji=True,
                             detected_at=datetime.now().isoformat(),
                             video_count=video_count,
+                            total_bytes=total_bytes,
+                            used_bytes=used_bytes,
                         )
 
                         with self._lock:

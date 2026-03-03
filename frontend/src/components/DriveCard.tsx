@@ -40,7 +40,7 @@ export function DriveCard({ drive, onImport, onEject, onDismiss, isNew }: DriveC
             </div>
 
             {/* Badge + Stats */}
-            <div className="flex items-center gap-3 mb-4">
+            <div className="flex items-center gap-3 mb-3">
                 {drive.is_dji && (
                     <span className="px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider bg-orange-500/10 text-orange-400 ring-1 ring-orange-500/20">
                         DJI Verified
@@ -48,6 +48,25 @@ export function DriveCard({ drive, onImport, onEject, onDismiss, isNew }: DriveC
                 )}
                 <span className="text-xs text-zinc-500"><span className="text-zinc-300 font-medium">{drive.video_count}</span> clips</span>
             </div>
+
+            {/* Storage Usage Bar */}
+            {drive.total_bytes > 0 && (() => {
+                const pct = Math.round((drive.used_bytes / drive.total_bytes) * 100)
+                const fmt = (b: number) => b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${(b / 1e6).toFixed(0)} MB`
+                return (
+                    <div className="mb-4">
+                        <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
+                            <div className={cn("absolute inset-y-0 left-0 rounded-full transition-all",
+                                pct > 80 ? "bg-orange-500" : "bg-blue-500"
+                            )} style={{ width: `${pct}%` }} />
+                        </div>
+                        <div className="flex justify-between mt-1 text-[10px] text-zinc-600 font-mono">
+                            <span>{fmt(drive.used_bytes)} used</span>
+                            <span>{fmt(drive.total_bytes)}</span>
+                        </div>
+                    </div>
+                )
+            })()}
 
             {/* Actions */}
             <div className="flex gap-2">

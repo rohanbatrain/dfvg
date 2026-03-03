@@ -20,21 +20,43 @@ export function ProcessingView({ job, apiBase, projectPath, isElectron, onReset,
     const [isCleaning, setIsCleaning] = useState(false)
     const [showCleanupConfirm, setShowCleanupConfirm] = useState(false)
 
-    // WebSocket preview
+    // WebSocket preview with auto-reconnect
     useEffect(() => {
         if (job.status !== 'processing') { setPreviewFrame(null); return }
         const wsUrl = apiBase.replace(/^http/, 'ws') + '/ws/preview'
         let ws: WebSocket | null = null
-        try {
-            ws = new WebSocket(wsUrl)
-            ws.onmessage = (ev) => {
-                try {
-                    const data = JSON.parse(ev.data)
-                    if (data.frame) setPreviewFrame(data.frame)
-                } catch { /* ignore */ }
-            }
-        } catch { /* WebSocket unavailable */ }
-        return () => { ws?.close(); setPreviewFrame(null) }
+        let reconnectTimeout: number | NodeJS.Timeout
+        let isSubscribed = true
+        let retryCount = 0
+
+        const connect = () => {
+            if (!isSubscribed) return
+            try {
+                ws = new WebSocket(wsUrl)
+                ws.onopen = () => { retryCount = 0 }
+                ws.onmessage = (ev) => {
+                    try {
+                        const data = JSON.parse(ev.data)
+                        if (data.frame) setPreviewFrame(data.frame)
+                    } catch { /* ignore */ }
+                }
+                ws.onclose = () => {
+                    if (!isSubscribed) return
+                    // Exponential backoff reconnect
+                    retryCount++
+                    const delay = Math.min(1000 * Math.pow(1.5, retryCount), 10000)
+                    reconnectTimeout = setTimeout(connect, delay)
+                }
+            } catch { /* WebSocket unavailable */ }
+        }
+        connect()
+
+        return () => {
+            isSubscribed = false
+            clearTimeout(reconnectTimeout)
+            ws?.close()
+            setPreviewFrame(null)
+        }
     }, [job.status, apiBase])
 
     const handleVerify = async () => {

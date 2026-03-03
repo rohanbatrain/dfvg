@@ -46,6 +46,7 @@ export interface IngestPlan {
 export interface DetectedDrive {
     path: string; label: string; is_dji: boolean
     detected_at: string; video_count: number
+    total_bytes: number; used_bytes: number
 }
 
 export type TabId = 'sources' | 'projects' | 'runs' | 'settings'

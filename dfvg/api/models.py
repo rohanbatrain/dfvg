@@ -58,6 +58,8 @@ class DetectedDriveInfo(BaseModel):
     is_dji: bool
     detected_at: str
     video_count: int = 0
+    total_bytes: int = 0
+    used_bytes: int = 0
 
 class JobStatus(str, Enum):
     PENDING = "pending"

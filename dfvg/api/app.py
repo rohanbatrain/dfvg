@@ -208,8 +208,20 @@ def ingest_scan(request: IngestRequest):
 
     if not source.exists() or not source.is_dir():
         raise HTTPException(status_code=400, detail=f"Source path does not exist: {request.source_path}")
-    if not project.exists() or not project.is_dir():
-        raise HTTPException(status_code=400, detail=f"Project path does not exist: {request.project_path}")
+
+    # Ensure destination exists or can be created
+    try:
+        project.mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        raise HTTPException(status_code=400, detail="Cannot create project directory (Permission Denied).")
+    
+    # Check if writable
+    try:
+        test_file = project / ".dfvg_write_test"
+        test_file.touch()
+        test_file.unlink()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Destination directory is strictly read-only.")
 
     config = Config(processing_mode=request.mode.value)
     ingester = Ingester(config)
@@ -243,8 +255,20 @@ def ingest_execute(request: IngestRequest):
 
     if not source.exists() or not source.is_dir():
         raise HTTPException(status_code=400, detail=f"Source path does not exist: {request.source_path}")
-    if not project.exists() or not project.is_dir():
-        raise HTTPException(status_code=400, detail=f"Project path does not exist: {request.project_path}")
+
+    # Ensure destination exists or can be created
+    try:
+        project.mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        raise HTTPException(status_code=400, detail="Cannot create project directory (Permission Denied).")
+    
+    # Check if writable
+    try:
+        test_file = project / ".dfvg_write_test"
+        test_file.touch()
+        test_file.unlink()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Destination directory is strictly read-only.")
 
     config = Config(processing_mode=request.mode.value)
     ingester = Ingester(config)
@@ -281,6 +305,8 @@ def list_detected_drives():
             is_dji=d.is_dji,
             detected_at=d.detected_at,
             video_count=d.video_count,
+            total_bytes=d.total_bytes,
+            used_bytes=d.used_bytes,
         )
         for d in drives
     ]
