@@ -139,6 +139,26 @@ export default function App() {
         setSubView('ingest')
     }
 
+    const handleEjectDrive = async (drive: DetectedDrive) => {
+        try {
+            const res = await fetch(`${apiBase}/drives/eject?path=${encodeURIComponent(drive.path)}`, { method: 'POST' })
+            if (res.ok) {
+                setDetectedDrives(prev => prev.filter(d => d.path !== drive.path))
+                showToast(`${drive.label} ejected safely`)
+            } else {
+                const e = await res.json().catch(() => ({}))
+                showToast(e.detail || 'Eject failed')
+            }
+        } catch { showToast('Eject failed') }
+    }
+
+    const handleDismissDrive = async (drive: DetectedDrive) => {
+        try {
+            await fetch(`${apiBase}/drives/dismiss?path=${encodeURIComponent(drive.path)}`, { method: 'POST' })
+            setDetectedDrives(prev => prev.filter(d => d.path !== drive.path))
+        } catch { /* ignore */ }
+    }
+
     const handleScanPath = async (path: string) => {
         setScanPath(path); setProjectPath(path)
         setIsScanning(true); setError(null); setScanResult(null)
@@ -169,7 +189,8 @@ export default function App() {
         } catch (err) { setError(err instanceof Error ? err.message : 'Failed to start') }
     }
 
-    const handleJobStarted = (jobId: string) => {
+    const handleJobStarted = (jobId: string, path?: string) => {
+        if (path) setProjectPath(path)
         setActiveJob({ job_id: jobId, status: 'pending', progress: 0, message: 'Starting…' })
         setSubView('processing')
         setTab('projects')
@@ -197,6 +218,7 @@ export default function App() {
                 <IngestWizard
                     drive={selectedDrive}
                     apiBase={apiBase}
+                    defaultMode={mode}
                     onCancel={() => setSubView('main')}
                     onJobStarted={handleJobStarted}
                     onBrowse={isElectron ? handleBrowse : undefined}
@@ -230,6 +252,8 @@ export default function App() {
                     <SourcesPanel
                         detectedDrives={detectedDrives}
                         onImportDrive={handleImportDrive}
+                        onEjectDrive={handleEjectDrive}
+                        onDismissDrive={handleDismissDrive}
                         onScanPath={handleScanPath}
                         onBrowse={isElectron ? handleBrowse : undefined}
                     />
@@ -247,7 +271,7 @@ export default function App() {
             case 'runs':
                 return <RunsPanel runHistory={runHistory} jobHistory={jobHistory} />
             case 'settings':
-                return <Settings />
+                return <Settings mode={mode} onModeChange={setMode} />
             default:
                 return null
         }
@@ -327,6 +351,7 @@ export default function App() {
                 onTabChange={handleTabChange}
                 onMobileConnect={() => setShowMobile(true)}
                 hasDrivesDetected={detectedDrives.length > 0}
+                activeJob={activeJob}
             />
             <Layout activeTab={tab}>
                 {renderContent()}

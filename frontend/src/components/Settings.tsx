@@ -1,13 +1,13 @@
-import { useState } from 'react'
 import { Monitor, Cpu, Sparkles, ToggleRight } from 'lucide-react'
+import { ProcessingMode } from '../types'
 
-type Mode = 'A' | 'B' | 'FULL'
+interface SettingsProps {
+    mode: ProcessingMode
+    onModeChange: (mode: ProcessingMode) => void
+}
 
-export function Settings() {
-    const [mode, setMode] = useState<Mode>('FULL')
-    const [hwAccel, setHwAccel] = useState(true)
-
-    const modes: { key: Mode; label: string; color: string; activeBg: string; activeBorder: string; desc: string; badge?: string }[] = [
+export function Settings({ mode, onModeChange }: SettingsProps) {
+    const modes: { key: ProcessingMode; label: string; color: string; activeBg: string; activeBorder: string; desc: string; badge?: string }[] = [
         {
             key: 'FULL',
             label: 'Full Mode',
@@ -51,7 +51,7 @@ export function Settings() {
 
                 <div className="grid gap-4 md:grid-cols-3">
                     {modes.map(m => (
-                        <button key={m.key} onClick={() => setMode(m.key)}
+                        <button key={m.key} onClick={() => onModeChange(m.key)}
                             className={`group relative p-4 rounded-xl border text-left transition-all ${mode === m.key ? `${m.activeBg} ${m.activeBorder}` : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'}`}>
                             {m.badge && (
                                 <span className="absolute -top-2 right-3 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
@@ -76,9 +76,16 @@ export function Settings() {
                         </div>
                         <p className="text-xs text-zinc-500">Use VideoToolbox (macOS) or NVENC for faster encoding.</p>
                     </div>
-                    <button onClick={() => setHwAccel(!hwAccel)} className={`transition-colors text-zinc-500 hover:text-white ${hwAccel ? 'text-green-500' : ''}`}>
-                        <ToggleRight className={`h-8 w-8 ${hwAccel ? 'fill-current' : ''}`} />
+                    <button className="transition-colors text-green-500 hover:text-white">
+                        <ToggleRight className="h-8 w-8 fill-current" />
                     </button>
+                </div>
+
+                {/* Current Mode Badge */}
+                <div className="text-center pt-2">
+                    <span className="text-[10px] uppercase tracking-widest text-zinc-600">
+                        Default mode: <span className="text-zinc-400 font-semibold">{mode === 'FULL' ? 'Full' : mode === 'A' ? 'Compact' : 'ProRes'}</span> — applied to all new imports
+                    </span>
                 </div>
             </section>
         </div>

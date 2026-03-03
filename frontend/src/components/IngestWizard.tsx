@@ -6,15 +6,23 @@ import { cn } from '../utils'
 interface IngestWizardProps {
     drive: DetectedDrive
     apiBase: string
+    defaultMode: ProcessingMode
     onCancel: () => void
-    onJobStarted: (jobId: string) => void
+    onJobStarted: (jobId: string, projectPath: string) => void
     onBrowse?: () => Promise<string | null>
 }
 
-export function IngestWizard({ drive, apiBase, onCancel, onJobStarted, onBrowse }: IngestWizardProps) {
+function generateProjectName(drive: DetectedDrive): string {
+    const d = new Date()
+    const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const name = drive.label.replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_')
+    return `~/Movies/DFVG_${date}_${name}`
+}
+
+export function IngestWizard({ drive, apiBase, defaultMode, onCancel, onJobStarted, onBrowse }: IngestWizardProps) {
     const [step, setStep] = useState<'setup' | 'plan' | 'executing'>('setup')
-    const [projectPath, setProjectPath] = useState('')
-    const [mode, setMode] = useState<ProcessingMode>('FULL')
+    const [projectPath, setProjectPath] = useState(() => generateProjectName(drive))
+    const [mode, setMode] = useState<ProcessingMode>(defaultMode)
     const [plan, setPlan] = useState<IngestPlan | null>(null)
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -44,7 +52,7 @@ export function IngestWizard({ drive, apiBase, onCancel, onJobStarted, onBrowse 
             if (!res.ok) throw new Error('Ingest failed')
             const result = await res.json()
             if (result.job_id) {
-                onJobStarted(result.job_id)
+                onJobStarted(result.job_id, projectPath)
             }
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Ingest failed')

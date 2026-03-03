@@ -1,5 +1,5 @@
-import { Home, FolderOpen, List, Settings as SettingsIcon, Smartphone, Film, HardDrive } from 'lucide-react'
-import { TabId } from '../types'
+import { HardDrive, FolderOpen, List, Settings as SettingsIcon, Smartphone, Film, Loader2 } from 'lucide-react'
+import { TabId, JobResponse } from '../types'
 import { cn } from '../utils'
 
 interface SidebarProps {
@@ -7,10 +7,13 @@ interface SidebarProps {
     onTabChange: (tab: TabId) => void
     onMobileConnect: () => void
     hasDrivesDetected: boolean
+    activeJob: JobResponse | null
 }
 
-export function Sidebar({ activeTab, onTabChange, onMobileConnect, hasDrivesDetected }: SidebarProps) {
-    const navItems: { id: TabId; label: string; icon: typeof Home }[] = [
+export function Sidebar({ activeTab, onTabChange, onMobileConnect, hasDrivesDetected, activeJob }: SidebarProps) {
+    const isProcessing = activeJob && ['pending', 'processing'].includes(activeJob.status)
+
+    const navItems: { id: TabId; label: string; icon: typeof HardDrive }[] = [
         { id: 'sources', label: 'Sources', icon: HardDrive },
         { id: 'projects', label: 'Projects', icon: FolderOpen },
         { id: 'runs', label: 'Runs', icon: List },
@@ -48,16 +51,43 @@ export function Sidebar({ activeTab, onTabChange, onMobileConnect, hasDrivesDete
                     >
                         <item.icon className={cn("h-4 w-4", activeTab === item.id ? "text-blue-500" : "text-zinc-600")} />
                         {item.label}
-                        {/* Drive detection pulse */}
+                        {/* Drive detection pulse on Sources */}
                         {item.id === 'sources' && hasDrivesDetected && (
                             <span className="absolute right-3 flex h-2 w-2">
                                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-orange-400 opacity-60" />
                                 <span className="relative inline-flex h-2 w-2 rounded-full bg-orange-500" />
                             </span>
                         )}
+                        {/* Active processing spinner on Projects */}
+                        {item.id === 'projects' && isProcessing && (
+                            <span className="absolute right-3">
+                                <Loader2 className="h-3.5 w-3.5 text-blue-400 animate-spin" />
+                            </span>
+                        )}
                     </button>
                 ))}
             </nav>
+
+            {/* Global Progress Bar */}
+            {isProcessing && activeJob && (
+                <div className="mx-2 mb-4">
+                    <button onClick={() => onTabChange('projects')}
+                        className="w-full rounded-xl border border-blue-800/30 bg-blue-950/10 p-3 text-left hover:border-blue-700/40 transition-all group">
+                        <div className="flex items-center gap-2 mb-2">
+                            <Loader2 className="h-3.5 w-3.5 text-blue-400 animate-spin" />
+                            <span className="text-[11px] font-semibold text-zinc-300 group-hover:text-white transition-colors">Processing</span>
+                            <span className="ml-auto text-[11px] font-mono text-blue-400">{(activeJob.progress * 100).toFixed(0)}%</span>
+                        </div>
+                        <div className="relative h-1 w-full overflow-hidden rounded-full bg-zinc-800">
+                            <div className="absolute inset-y-0 left-0 rounded-full bg-blue-500 transition-all duration-500"
+                                style={{ width: `${activeJob.progress * 100}%` }} />
+                        </div>
+                        {activeJob.current_file && (
+                            <p className="text-[9px] text-zinc-600 font-mono mt-1.5 truncate">{activeJob.current_file}</p>
+                        )}
+                    </button>
+                </div>
+            )}
 
             {/* Footer Actions */}
             <div className="mb-6 space-y-3 px-2">

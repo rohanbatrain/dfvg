@@ -1,16 +1,18 @@
 import { useState } from 'react'
-import { FolderOpen, Info, Image, HardDrive } from 'lucide-react'
+import { FolderOpen, Info, Image, HardDrive, Usb, ArrowRight } from 'lucide-react'
 import { DetectedDrive } from '../types'
 import { DriveCard } from './DriveCard'
 
 interface SourcesPanelProps {
     detectedDrives: DetectedDrive[]
     onImportDrive: (drive: DetectedDrive) => void
+    onEjectDrive: (drive: DetectedDrive) => void
+    onDismissDrive: (drive: DetectedDrive) => void
     onScanPath: (path: string) => void
     onBrowse?: () => Promise<string | null>
 }
 
-export function SourcesPanel({ detectedDrives, onImportDrive, onScanPath, onBrowse }: SourcesPanelProps) {
+export function SourcesPanel({ detectedDrives, onImportDrive, onEjectDrive, onDismissDrive, onScanPath, onBrowse }: SourcesPanelProps) {
     const [manualPath, setManualPath] = useState('')
 
     return (
@@ -34,14 +36,35 @@ export function SourcesPanel({ detectedDrives, onImportDrive, onScanPath, onBrow
                                 key={drive.path}
                                 drive={drive}
                                 onImport={onImportDrive}
+                                onEject={onEjectDrive}
+                                onDismiss={onDismissDrive}
                             />
                         ))}
                     </div>
                 ) : (
-                    <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-900/20 p-8 text-center">
-                        <HardDrive className="h-8 w-8 mx-auto mb-3 text-zinc-700" />
-                        <p className="text-sm text-zinc-500">No external drives detected</p>
-                        <p className="text-xs text-zinc-600 mt-1">Plug in a DJI SD card to get started</p>
+                    /* Gap 3: Polished empty state */
+                    <div className="relative overflow-hidden rounded-2xl border border-dashed border-zinc-800 bg-gradient-to-br from-zinc-950 to-zinc-900/50 p-10 text-center">
+                        {/* Decorative background circles */}
+                        <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-orange-500/5 blur-2xl" />
+                        <div className="absolute -left-8 -bottom-8 h-24 w-24 rounded-full bg-blue-500/5 blur-2xl" />
+
+                        <div className="relative">
+                            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-zinc-900 border border-zinc-800 shadow-lg">
+                                <Usb className="h-7 w-7 text-zinc-600" />
+                            </div>
+                            <p className="text-sm font-medium text-zinc-400">No external drives detected</p>
+                            <p className="text-xs text-zinc-600 mt-2 max-w-xs mx-auto leading-relaxed">
+                                Plug in a DJI SD card or external drive to get started.
+                                Drives are auto-detected every few seconds.
+                            </p>
+
+                            {/* Animated dots */}
+                            <div className="mt-4 flex items-center justify-center gap-1">
+                                <div className="h-1.5 w-1.5 rounded-full bg-zinc-700 animate-pulse" style={{ animationDelay: '0ms' }} />
+                                <div className="h-1.5 w-1.5 rounded-full bg-zinc-700 animate-pulse" style={{ animationDelay: '300ms' }} />
+                                <div className="h-1.5 w-1.5 rounded-full bg-zinc-700 animate-pulse" style={{ animationDelay: '600ms' }} />
+                            </div>
+                        </div>
                     </div>
                 )}
             </section>
@@ -87,7 +110,7 @@ export function SourcesPanel({ detectedDrives, onImportDrive, onScanPath, onBrow
                     <button onClick={() => manualPath && onScanPath(manualPath)}
                         disabled={!manualPath}
                         className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95 shadow-lg shadow-blue-900/20">
-                        Scan
+                        <ArrowRight className="h-4 w-4" /> Scan
                     </button>
                 </div>
             </section>

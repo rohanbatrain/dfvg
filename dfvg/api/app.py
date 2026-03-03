@@ -295,6 +295,34 @@ def dismiss_drive(path: str):
     return {"dismissed": True, "path": path}
 
 
+@app.post("/drives/eject")
+def eject_drive(path: str):
+    """Safely eject an external drive (macOS: diskutil eject)."""
+    import subprocess
+    import platform
+
+    drive_path = Path(path).resolve()
+    if not drive_path.exists():
+        raise HTTPException(status_code=404, detail="Drive path not found")
+
+    if platform.system() == "Darwin":
+        try:
+            result = subprocess.run(
+                ["diskutil", "eject", str(drive_path)],
+                capture_output=True, text=True, timeout=15,
+            )
+            if result.returncode == 0:
+                _drive_watcher.dismiss_drive(path)
+                logger.info(f"Ejected drive: {path}")
+                return {"ejected": True, "path": path, "message": result.stdout.strip()}
+            else:
+                raise HTTPException(status_code=500, detail=f"Eject failed: {result.stderr.strip()}")
+        except subprocess.TimeoutExpired:
+            raise HTTPException(status_code=500, detail="Eject timed out")
+    else:
+        raise HTTPException(status_code=501, detail="Eject only supported on macOS")
+
+
 # ── Runs / Verify / Cleanup ───────────────────────────────────────
 
 @app.get("/runs", response_model=list[RunInfo])
