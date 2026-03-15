@@ -1,0 +1,42 @@
+# Node/JS
+node_modules/
+dist/
+build/
+.next/
+out/
+.nuxt/
+.vercel/
+.npm/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.env
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# DFVG Specific
+01_ORIGINALS/
+02_PROXIES/
+03_GRADED_MASTERS/
+04_EXPORTS/
+LOGS/
+METADATA.csv
+EDITOR_PACK.zip
+*.sqlite3
+*.db
+
+# Mobile
+mobile/ios/Pods/
+mobile/ios/build/
+mobile/android/.gradle/
+mobile/android/app/build/
+mobile/android/build/

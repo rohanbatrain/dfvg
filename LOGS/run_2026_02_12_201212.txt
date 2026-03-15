@@ -1,5 +1,0 @@
-2026-02-12 20:12:12,219 [INFO] Starting DFVG process in /Users/rohan/Documents/DFVG
-2026-02-12 20:12:12,221 [INFO] Mode: A
-2026-02-12 20:12:12,222 [INFO] Archiving test_video.mp4
-2026-02-12 20:12:12,273 [INFO] Detected: test_video.mp4 | Normal | 8-bit
-2026-02-12 20:12:12,275 [INFO] Rule Applied: ['proxy', 'preview'] (LUT: False)
