@@ -3,15 +3,19 @@ name: Build & Release DFVG
 on:
   push:
     tags:
-      - 'v*.*.*'  # Triggers on tags like v1.0.0
-  workflow_dispatch:  # Allow manual triggering
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
 
 jobs:
   build:
     strategy:
       matrix:
         os: [macos-latest, windows-latest]
-    
+
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -29,7 +33,7 @@ jobs:
           python-version: "3.10"
 
       # ── 1. Build Python Backend (dfvg-api) ──
-      
+
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
@@ -55,10 +59,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Copy the compiled python backend into the expected path for electron-builder
           mkdir -p dist/dfvg-api
           cp -r ../dist/dfvg-api/* dist/dfvg-api/
-          npx electron-builder --mac
+          npx electron-builder --mac --publish never
 
       - name: Build Electron App (Windows)
         if: matrix.os == 'windows-latest'
@@ -66,13 +69,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Copy the compiled python backend into the expected path for electron-builder
-          mkdir dist\dfvg-api
-          xcopy /E /I ..\dist\dfvg-api dist\dfvg-api
-          npx electron-builder --win
+          New-Item -ItemType Directory -Force -Path dist\dfvg-api | Out-Null
+          Copy-Item -Recurse -Force ..\dist\dfvg-api\* dist\dfvg-api\
+          npx electron-builder --win --publish never
 
-      # ── 3. Upload Artifacts for Release ──
-      
+      # ── 3. Upload Artifacts ──
+
       - name: Upload macOS DMG
         if: matrix.os == 'macos-latest'
         uses: actions/upload-artifact@v4
@@ -91,9 +93,9 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
-    
+
     steps:
-      - name: Download Artifacts
+      - name: Download All Artifacts
         uses: actions/download-artifact@v4
 
       - name: Create GitHub Release
