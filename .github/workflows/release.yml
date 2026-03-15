@@ -1,0 +1,106 @@
+name: Build & Release DFVG
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Triggers on tags like v1.0.0
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      # ── 1. Build Python Backend (dfvg-api) ──
+      
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -e .
+
+      - name: Build Python Backend with PyInstaller
+        run: pyinstaller dfvg-api.spec --clean
+
+      # ── 2. Build Electron Frontend ──
+
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build Vite App
+        working-directory: frontend
+        run: npm run build
+
+      - name: Build Electron App (MacOS)
+        if: matrix.os == 'macos-latest'
+        working-directory: frontend
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Copy the compiled python backend into the expected path for electron-builder
+          mkdir -p dist/dfvg-api
+          cp -r ../dist/dfvg-api/* dist/dfvg-api/
+          npx electron-builder --mac
+
+      - name: Build Electron App (Windows)
+        if: matrix.os == 'windows-latest'
+        working-directory: frontend
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Copy the compiled python backend into the expected path for electron-builder
+          mkdir dist\dfvg-api
+          xcopy /E /I ..\dist\dfvg-api dist\dfvg-api
+          npx electron-builder --win
+
+      # ── 3. Upload Artifacts for Release ──
+      
+      - name: Upload macOS DMG
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dfvg-mac
+          path: frontend/dist/*.dmg
+
+      - name: Upload Windows Setup
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dfvg-win
+          path: frontend/dist/*.exe
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dfvg-mac/*.dmg
+            dfvg-win/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
