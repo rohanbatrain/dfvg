@@ -3,6 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "description": "DJI Footage Variant Generator – Desktop App",
+  "repository": "https://github.com/rohanbatrain/dfvg",
   "author": "DFVG",
   "type": "module",
   "main": "electron/main.cjs",
