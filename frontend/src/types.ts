@@ -51,3 +51,13 @@ export interface DetectedDrive {
 
 export type TabId = 'sources' | 'projects' | 'runs' | 'settings'
 export type ProcessingMode = 'A' | 'B' | 'FULL'
+
+export interface ExtractedFrame {
+    path: string; filename: string; timestamp: number
+    width: number; height: number
+}
+
+export interface ExtractFramesResult {
+    total_videos: number; total_frames: number
+    frames: ExtractedFrame[]
+}

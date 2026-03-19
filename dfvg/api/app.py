@@ -28,6 +28,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .models import (
     CleanupRequest, CleanupResponse, ClipInfo, DetectedDriveInfo,
+    ExtractFramesRequest, ExtractFramesResponse, ExtractedFrameInfo,
     IngestFileInfo, IngestPlanResponse, IngestRequest,
     JobRequest, JobResponse, RunInfo, ScanResponse, VerifyResponse,
 )
@@ -499,6 +500,68 @@ def get_job_status(job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
+
+
+# ── Frame Extraction ────────────────────────────────────────────────
+
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".mxf"}
+
+@app.post("/extract-frames", response_model=ExtractFramesResponse)
+def extract_frames(request: ExtractFramesRequest):
+    """Extract random high-quality frames from video files."""
+    from ..frame_extractor import extract_random_frames
+
+    source = Path(request.source_path).resolve()
+    project = Path(request.project_path).resolve()
+
+    if not source.exists():
+        raise HTTPException(status_code=400, detail=f"Source path does not exist: {request.source_path}")
+
+    # Collect video files
+    if source.is_file():
+        videos = [source] if source.suffix.lower() in VIDEO_EXTENSIONS else []
+    else:
+        videos = sorted(
+            f for f in source.rglob("*")
+            if f.is_file() and f.suffix.lower() in VIDEO_EXTENSIONS
+        )
+
+    if not videos:
+        raise HTTPException(status_code=400, detail="No video files found at the given path.")
+
+    # Ensure project directory exists
+    project.mkdir(parents=True, exist_ok=True)
+
+    all_frames = []
+    for video in videos:
+        frames = extract_random_frames(video, project, count=request.count)
+        for f in frames:
+            all_frames.append(ExtractedFrameInfo(
+                path=f.path,
+                filename=f.filename,
+                timestamp=f.timestamp,
+                width=f.width,
+                height=f.height,
+            ))
+
+    return ExtractFramesResponse(
+        total_videos=len(videos),
+        total_frames=len(all_frames),
+        frames=all_frames,
+    )
+
+
+# ── Serve Extracted Photos ──────────────────────────────────────────
+
+@app.get("/static-photo")
+def serve_photo(path: str):
+    """Serve an extracted frame image from the local filesystem."""
+    photo = Path(path).resolve()
+    if not photo.exists():
+        raise HTTPException(status_code=404, detail="Photo not found")
+    if photo.suffix.lower() not in {".png", ".jpg", ".jpeg", ".webp"}:
+        raise HTTPException(status_code=400, detail="Not an image file")
+    return FileResponse(str(photo), media_type=f"image/{photo.suffix.lstrip('.').lower()}")
 
 
 # ── Static Frontend (must be mounted LAST) ─────────────────────────

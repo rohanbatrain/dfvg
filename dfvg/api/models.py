@@ -108,3 +108,23 @@ class CleanupResponse(BaseModel):
     reason: str
     files_deleted: int = 0
     bytes_freed: int = 0
+
+
+class ExtractFramesRequest(BaseModel):
+    source_path: str          # single video file or directory
+    project_path: str         # project root (frames go into 05_PHOTOS/)
+    count: int = 5            # number of random frames per video
+
+
+class ExtractedFrameInfo(BaseModel):
+    path: str
+    filename: str
+    timestamp: float
+    width: int
+    height: int
+
+
+class ExtractFramesResponse(BaseModel):
+    total_videos: int
+    total_frames: int
+    frames: List[ExtractedFrameInfo]

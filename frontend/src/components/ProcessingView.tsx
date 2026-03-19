@@ -1,6 +1,6 @@
-import { Loader2, CheckCircle2, AlertCircle, Eye, ExternalLink, RotateCcw, ShieldCheck, Trash2 } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertCircle, Eye, ExternalLink, RotateCcw, ShieldCheck, Trash2, Camera } from 'lucide-react'
 import { useState, useEffect } from 'react'
-import { JobResponse, VerifyResult } from '../types'
+import { JobResponse, VerifyResult, ExtractedFrame } from '../types'
 import { cn } from '../utils'
 import { ConfirmDialog } from './ConfirmDialog'
 
@@ -19,6 +19,8 @@ export function ProcessingView({ job, apiBase, projectPath, isElectron, onReset,
     const [isVerifying, setIsVerifying] = useState(false)
     const [isCleaning, setIsCleaning] = useState(false)
     const [showCleanupConfirm, setShowCleanupConfirm] = useState(false)
+    const [isExtracting, setIsExtracting] = useState(false)
+    const [extractedFrames, setExtractedFrames] = useState<ExtractedFrame[]>([])
 
     // WebSocket preview with auto-reconnect
     useEffect(() => {
@@ -78,6 +80,22 @@ export function ProcessingView({ job, apiBase, projectPath, isElectron, onReset,
             })
         } catch { /* ignore */ }
         finally { setIsCleaning(false) }
+    }
+
+    const handleExtractFrames = async () => {
+        setIsExtracting(true)
+        try {
+            const sourcePath = projectPath + '/01_ORIGINALS'
+            const res = await fetch(`${apiBase}/extract-frames`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ source_path: sourcePath, project_path: projectPath, count: 5 })
+            })
+            if (res.ok) {
+                const data = await res.json()
+                setExtractedFrames(data.frames || [])
+            }
+        } catch { /* ignore */ }
+        finally { setIsExtracting(false) }
     }
 
     const statusIcon = job.status === 'completed' ? <CheckCircle2 className="h-12 w-12 text-green-500" /> :
@@ -141,12 +159,17 @@ export function ProcessingView({ job, apiBase, projectPath, isElectron, onReset,
                                 </button>
                             </div>
 
-                            {/* Verify & Cleanup */}
-                            <div className="flex items-center justify-center gap-3">
+                            {/* Verify, Extract & Cleanup */}
+                            <div className="flex items-center justify-center gap-3 flex-wrap">
                                 <button onClick={handleVerify} disabled={isVerifying}
                                     className="flex items-center gap-2 rounded-xl bg-emerald-600/10 border border-emerald-600/30 px-5 py-2.5 text-sm font-medium text-emerald-400 hover:bg-emerald-600/20 transition-all disabled:opacity-50">
                                     {isVerifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
                                     Verify Outputs
+                                </button>
+                                <button onClick={handleExtractFrames} disabled={isExtracting}
+                                    className="flex items-center gap-2 rounded-xl bg-violet-600/10 border border-violet-600/30 px-5 py-2.5 text-sm font-medium text-violet-400 hover:bg-violet-600/20 transition-all disabled:opacity-50">
+                                    {isExtracting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                                    Extract Frames
                                 </button>
                                 <button onClick={() => setShowCleanupConfirm(true)} disabled={isCleaning || !verifyResult?.all_verified}
                                     className="flex items-center gap-2 rounded-xl bg-red-600/10 border border-red-600/30 px-5 py-2.5 text-sm font-medium text-red-400 hover:bg-red-600/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
@@ -163,6 +186,32 @@ export function ProcessingView({ job, apiBase, projectPath, isElectron, onReset,
                                     {verifyResult.all_verified ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
                                     {verifyResult.passed}/{verifyResult.total_outputs} verified
                                     {verifyResult.failed > 0 && ` · ${verifyResult.failed} failed`}
+                                </div>
+                            )}
+
+                            {/* Extracted Frames Gallery */}
+                            {extractedFrames.length > 0 && (
+                                <div className="pt-4 space-y-3">
+                                    <h3 className="text-sm font-semibold text-zinc-300 flex items-center justify-center gap-2">
+                                        <Camera className="h-4 w-4 text-violet-400" />
+                                        Extracted Frames ({extractedFrames.length})
+                                    </h3>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                        {extractedFrames.map((frame, i) => (
+                                            <div key={i} className="group relative rounded-xl overflow-hidden border border-zinc-800 bg-black hover:border-violet-600/40 transition-all">
+                                                <img
+                                                    src={`${apiBase}/static-photo?path=${encodeURIComponent(frame.path)}`}
+                                                    alt={frame.filename}
+                                                    className="w-full h-auto object-cover aspect-video"
+                                                    loading="lazy"
+                                                />
+                                                <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent p-2">
+                                                    <p className="text-[10px] text-zinc-300 font-mono truncate">{frame.filename}</p>
+                                                    <p className="text-[9px] text-zinc-500">{frame.width}×{frame.height} · {frame.timestamp.toFixed(1)}s</p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             )}
                         </div>
