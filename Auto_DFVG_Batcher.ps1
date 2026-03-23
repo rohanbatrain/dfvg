@@ -22,8 +22,12 @@ This means you can process 2 Terabytes of video on a laptop that only has 100GB 
 # CONFIGURATION - CHANGE THESE BEFORE RUNNING
 # ==============================================================================
 
-# 1. The massive drive where your original raw media currently lives
-$SourceDrive = "D:\MyMassiveSDCard"
+# 1. The massive drives where your original raw media currently lives.
+# You can add as many drives/folders here as you have plugged in.
+$SourceDrives = @(
+    "D:\MyMassiveSDCard",
+    "E:\AnotherDrive\RawFootage"
+)
 
 # 2. Your fast local SSD where DFVG will do the actual processing work
 $ProjectDir  = "C:\DFVG_Workspace"
@@ -65,13 +69,23 @@ while ($true) {
     $CopiedFilesSet = Get-Content -Path $HistoryLog -ErrorAction SilentlyContinue
     if ($null -eq $CopiedFilesSet) { $CopiedFilesSet = @() }
 
-    # Find raw video files not yet copied
-    $RawFiles = Get-ChildItem -Path $SourceDrive -Recurse -File | Where-Object {
-        ($ValidExtensions -contains $_.Extension.ToLower()) -and ($CopiedFilesSet -notcontains $_.FullName)
+    # Find raw video files not yet copied across ALL source drives
+    $RawFiles = @()
+    foreach ($Drive in $SourceDrives) {
+        if (Test-Path $Drive) {
+            $DriveFiles = Get-ChildItem -Path $Drive -Recurse -File -ErrorAction SilentlyContinue | Where-Object {
+                ($ValidExtensions -contains $_.Extension.ToLower()) -and ($CopiedFilesSet -notcontains $_.FullName)
+            }
+            if ($null -ne $DriveFiles) {
+                $RawFiles += $DriveFiles
+            }
+        } else {
+            Write-Host "Skipping $Drive (Drive not found or disconnected)" -ForegroundColor DarkGray
+        }
     }
 
     if ($RawFiles.Count -eq 0) {
-        Write-Host "`n[SUCCESS] No more unprocessed video files found on $SourceDrive. Dataset complete!" -ForegroundColor Green
+        Write-Host "`n[SUCCESS] No more unprocessed video files found on any source drives. Dataset complete!" -ForegroundColor Green
         break
     }
 
@@ -87,9 +101,15 @@ while ($true) {
             break
         }
 
-        # Mirror directory structure in 01_ORIGINALS
-        $RelativePath = $file.FullName.Substring($SourceDrive.Length)
-        if ($RelativePath.StartsWith("\")) { $RelativePath = $RelativePath.Substring(1) }
+        # Mirror directory structure in 01_ORIGINALS based on the root of the specific drive
+        # We find which SourceDrive this file came from so we can strip the root path cleanly
+        $MatchingDrive = $SourceDrives | Where-Object { $file.FullName.StartsWith($_) } | Select-Object -First 1
+        
+        $RelativePath = $file.FullName
+        if ($null -ne $MatchingDrive) {
+            $RelativePath = $file.FullName.Substring($MatchingDrive.Length)
+            if ($RelativePath.StartsWith("\")) { $RelativePath = $RelativePath.Substring(1) }
+        }
         
         $DestinationFile = Join-Path -Path "$ProjectDir\01_ORIGINALS" -ChildPath $RelativePath
         $DestinationDir = Split-Path -Path $DestinationFile -Parent
