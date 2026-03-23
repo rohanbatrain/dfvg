@@ -632,6 +632,26 @@ def history(project_path):
     console.print(table)
 
 
+# ── Daemon Command ────────────────────────────────────────────────
+
+@cli.group()
+def daemon():
+    """Manage the Zero-Touch Background Daemon."""
+    pass
+
+@daemon.command()
+@click.option("--config", default="dfvg_daemon.json", help="Path to daemon config file")
+def start(config):
+    """Start the headless drive-watcher daemon."""
+    from .daemon import DFVGDaemon
+    
+    console.print(f"[bold cyan]Starting DFVG Background Daemon...[/bold cyan]")
+    console.print(f"Loading config from: {config}")
+    console.print("Waiting for DJI SD Cards to be inserted. Press Ctrl+C to stop.")
+    
+    d = DFVGDaemon(config_file=config)
+    d.run()
+
 def main():
     cli()
 
