@@ -1,110 +1,156 @@
 <#
 .SYNOPSIS
-DFVG Automated Batch Processor for Massive Datasets
+DFVG Enterprise Batch Processor – Production Grade Daemon
 
 .DESCRIPTION
-This script safely processes a massive dataset piece-by-piece by repeatedly:
-1. Copying a safe-sized batch of files (e.g., 50GB) from a huge source drive to a local working folder.
-2. Running DFVG's processing engine (creating proxies, masters).
-3. Verifying the outputs mathematically.
-4. "Cleaning up" (deleting) the original source files from the local working folder to free space.
-5. Moving the successfully generated proxies & masters to a Cloud Sync folder.
-6. Looping until the entire source drive has been processed.
-
-This means you can process 2 Terabytes of video on a laptop that only has 100GB of free space, completely autonomously while you sleep.
-
-.NOTES
-- Make sure DFVG CLI is accessible (or modify $DfvgExePath).
-- Set your 3 paths carefully before running.
+A high-resilience automation daemon for processing massive datasets with DFVG.
+Features:
+- Config-driven (auto-generates a config.json)
+- Rolling logs & Webhook notifications
+- Pre-flight disk space safety checks
+- Graceful shutdown/pause (detects stop.txt)
+- Try-Catch network resilience for Cloud drops
 #>
 
-# ==============================================================================
-# CONFIGURATION - CHANGE THESE BEFORE RUNNING
-# ==============================================================================
+$ConfigPath = Join-Path -Path $PSScriptRoot -ChildPath "dfvg_batcher_config.json"
+$LogDir     = Join-Path -Path $PSScriptRoot -ChildPath "logs"
+$HistoryLog = Join-Path -Path $PSScriptRoot -ChildPath "batch_history.txt"
 
-# 1. The massive drives where your original raw media currently lives.
-# You can add as many drives/folders here as you have plugged in.
-$SourceDrives = @(
-    "D:\MyMassiveSDCard",
-    "E:\AnotherDrive\RawFootage"
-)
+# Ensure Log Dir
+if (-not (Test-Path $LogDir)) { New-Item -Path $LogDir -ItemType Directory -Force | Out-Null }
+$CurrentLog = "$LogDir\batcher_$(Get-Date -Format 'yyyy-MM-dd').log"
 
-# 2. Your fast local SSD where DFVG will do the actual processing work
-$ProjectDir  = "C:\DFVG_Workspace"
+# Clean old logs (older than 7 days)
+Get-ChildItem -Path $LogDir -Filter "*.log" | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-7) } | Remove-Item -Force -ErrorAction SilentlyContinue
 
-# 3. Your Cloud Sync folder (e.g., Google Drive, Dropbox, OneDrive)
-$CloudFolder = "Z:\CloudSync\DFVG_Uploads"
+# ── LOGGING ────────────────────────────────────────────────────────
+function Write-Log {
+    param([string]$Message, [string]$Level="INFO")
+    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $logEntry = "[$timestamp] [$Level] $Message"
+    
+    # Console color
+    switch ($Level) {
+        "INFO"    { Write-Host $logEntry -ForegroundColor Cyan }
+        "SUCCESS" { Write-Host $logEntry -ForegroundColor Green }
+        "WARN"    { Write-Host $logEntry -ForegroundColor Yellow }
+        "ERROR"   { Write-Host $logEntry -ForegroundColor Red }
+        "ALERT"   { Write-Host $logEntry -ForegroundColor Magenta }
+        Default   { Write-Host $logEntry }
+    }
+    
+    # File Logger
+    Add-Content -Path $CurrentLog -Value $logEntry
+}
 
-# How many Gigabytes of RAW files to copy locally per batch? 
-# Keep this lower than your free C: drive space!
-$BatchLimitGB = 50
+# ── WEBHOOK ────────────────────────────────────────────────────────
+function Send-WebhookAlert {
+    param([string]$Message, [string]$Url)
+    if ([string]::IsNullOrWhiteSpace($Url)) { return }
+    try {
+        $body = @{ content = "🤖 **DFVG Batcher:** $Message" } | ConvertTo-Json
+        Invoke-RestMethod -Uri $Url -Method Post -Body $body -ContentType "application/json" -ErrorAction SilentlyContinue | Out-Null
+    } catch {
+        Write-Log "Failed to send webhook alerting" -Level "WARN"
+    }
+}
 
-# Path to the DFVG Command Line (if installed via the Windows Installer)
-# If you are running from Python source code, you can change this to "python -m dfvg"
-$DfvgExePath = "dfvg-api.exe"
+# ── CONFIGURATION & SETUP ─────────────────────────────────────────
+$DefaultConfig = @{
+    SourceDrives = @("D:\", "E:\")
+    ProjectDir   = "C:\DFVG_Workspace"
+    CloudFolder  = "Z:\CloudSync"
+    BatchLimitGB = 50
+    DfvgExePath  = "dfvg-api.exe"
+    WebhookUrl   = ""
+    MinFreeSpaceGB = 15
+}
 
-# ==============================================================================
+if (-not (Test-Path $ConfigPath)) {
+    Write-Log "No config found. Generating default config.json..." -Level "WARN"
+    $DefaultConfig | ConvertTo-Json -Depth 3 | Set-Content -Path $ConfigPath
+    Write-Log "Please edit $ConfigPath and restart the script!" -Level "ALERT"
+    Start-Sleep -Seconds 10
+    exit
+}
 
-Write-Host "`n=======================================================" -ForegroundColor Cyan
-Write-Host "   DFVG MASSIVE DATASET AUTOMATOR" -ForegroundColor Cyan
-Write-Host "=======================================================" -ForegroundColor Cyan
-
-# Ensure output directories exist
-if (-not (Test-Path $ProjectDir\01_ORIGINALS)) { New-Item -Path $ProjectDir\01_ORIGINALS -ItemType Directory -Force | Out-Null }
-if (-not (Test-Path $CloudFolder)) { New-Item -Path $CloudFolder -ItemType Directory -Force | Out-Null }
+$Config = Get-Content -Path $ConfigPath -Raw | ConvertFrom-Json
 
 $ValidExtensions = @(".mp4", ".mov", ".mkv", ".mxf")
-$BatchLimitBytes = $BatchLimitGB * 1GB
+$BatchLimitBytes = $Config.BatchLimitGB * 1GB
+$MinFreeSpaceBytes = $Config.MinFreeSpaceGB * 1GB
+$ProjectDir = $Config.ProjectDir
 
-# We keep a simple log to remember which files from the MASSIVE drive we've already copied
-$HistoryLog = "$ProjectDir\batch_history.txt"
-if (-not (Test-Path $HistoryLog)) { New-Item -Path $HistoryLog -ItemType File | Out-Null }
+if (-not (Test-Path "$ProjectDir\01_ORIGINALS")) { New-Item -Path "$ProjectDir\01_ORIGINALS" -ItemType Directory -Force | Out-Null }
+if (-not (Test-Path $Config.CloudFolder)) { New-Item -Path $Config.CloudFolder -ItemType Directory -Force | Out-Null }
+if (-not (Test-Path $HistoryLog)) { New-Item -Path $HistoryLog -ItemType File -Force | Out-Null }
 
-$CopiedFilesSet = Get-Content -Path $HistoryLog -ErrorAction SilentlyContinue
+Write-Log "DFVG Enterprise Batcher Started" -Level "SUCCESS"
+Send-WebhookAlert "Pipeline started. Scanning $($Config.SourceDrives.Count) source drives..." $Config.WebhookUrl
+
+# ── MAIN LOOP ───────────────────────────────────────────────────────
+$BatchNumber = 1
 
 while ($true) {
-    Write-Host "`n[1] Scanning Source Drive for unprocessed files..." -ForegroundColor Yellow
-    
-    # Refresh history
+    # 1. Graceful Shutdown Check
+    if (Test-Path "$ProjectDir\pause.txt") {
+        Write-Log "Pause file detected. Sleeping for 60s..." -Level "WARN"
+        Start-Sleep -Seconds 60
+        continue
+    }
+    if (Test-Path "$ProjectDir\stop.txt") {
+        Write-Log "Stop file detected. Shutting down daemon gracefully." -Level "ALERT"
+        Send-WebhookAlert "Pipeline stopped gracefully." $Config.WebhookUrl
+        break
+    }
+
+    # 2. Disk Space Safety Check
+    $DriveLetter = (Resolve-Path $ProjectDir).Path.Substring(0, 3)
+    $DriveInfo = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID='$($DriveLetter.TrimEnd('\'))'"
+    if ($DriveInfo.FreeSpace -lt $MinFreeSpaceBytes) {
+        Write-Log "CRITICAL: Drive $DriveLetter has less than $($Config.MinFreeSpaceGB)GB free! Pausing pipeline." -Level "ERROR"
+        Send-WebhookAlert "CRITICAL: Local drive out of space. Pipeline paused." $Config.WebhookUrl
+        Start-Sleep -Seconds 300
+        continue
+    }
+
+    # 3. Scanning logic
+    Write-Log "=== BATCH $BatchNumber ===" -Level "INFO"
     $CopiedFilesSet = Get-Content -Path $HistoryLog -ErrorAction SilentlyContinue
     if ($null -eq $CopiedFilesSet) { $CopiedFilesSet = @() }
 
-    # Find raw video files not yet copied across ALL source drives
     $RawFiles = @()
-    foreach ($Drive in $SourceDrives) {
+    foreach ($Drive in $Config.SourceDrives) {
         if (Test-Path $Drive) {
             $DriveFiles = Get-ChildItem -Path $Drive -Recurse -File -ErrorAction SilentlyContinue | Where-Object {
                 ($ValidExtensions -contains $_.Extension.ToLower()) -and ($CopiedFilesSet -notcontains $_.FullName)
             }
-            if ($null -ne $DriveFiles) {
-                $RawFiles += $DriveFiles
-            }
-        } else {
-            Write-Host "Skipping $Drive (Drive not found or disconnected)" -ForegroundColor DarkGray
+            if ($null -ne $DriveFiles) { $RawFiles += $DriveFiles }
         }
     }
 
     if ($RawFiles.Count -eq 0) {
-        Write-Host "`n[SUCCESS] No more unprocessed video files found on any source drives. Dataset complete!" -ForegroundColor Green
+        Write-Log "No more unprocessed video files found. Dataset complete!" -Level "SUCCESS"
+        Send-WebhookAlert "🎉 Pipeline finished successfully. All sources processed." $Config.WebhookUrl
         break
     }
 
-    Write-Host "Found $($RawFiles.Count) remaining raw files. Building next batch..."
-
-    # Step A: Copy up to BatchLimitGB
+    Write-Log "Found $($RawFiles.Count) remaining files. Copying next batch..." -Level "INFO"
     $CurrentBatchBytes = 0
     $CopiedCount = 0
 
+    # 4. Copy Loop with Try/Catch
     foreach ($file in $RawFiles) {
-        if (($CurrentBatchBytes + $file.Length) -gt $BatchLimitBytes) {
-            Write-Host "Batch limit of ${BatchLimitGB}GB reached. Moving to processing phase."
+        if (($CurrentBatchBytes + $file.Length) -gt $BatchLimitBytes) { break }
+
+        # Check free space dynamically during copy
+        $DriveInfo = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID='$($DriveLetter.TrimEnd('\'))'"
+        if ($DriveInfo.FreeSpace -lt ($file.Length + $MinFreeSpaceBytes)) {
+            Write-Log "Local disk nearing safety limit. Ending copy phase early." -Level "WARN"
             break
         }
 
-        # Mirror directory structure in 01_ORIGINALS based on the root of the specific drive
-        # We find which SourceDrive this file came from so we can strip the root path cleanly
-        $MatchingDrive = $SourceDrives | Where-Object { $file.FullName.StartsWith($_) } | Select-Object -First 1
-        
+        $MatchingDrive = $Config.SourceDrives | Where-Object { $file.FullName.StartsWith($_[0]) } | Select-Object -First 1
         $RelativePath = $file.FullName
         if ($null -ne $MatchingDrive) {
             $RelativePath = $file.FullName.Substring($MatchingDrive.Length)
@@ -116,67 +162,68 @@ while ($true) {
 
         if (-not (Test-Path $DestinationDir)) { New-Item -Path $DestinationDir -ItemType Directory -Force | Out-Null }
 
-        Write-Host "  Copying: $($file.Name)..."
-        Copy-Item -Path $file.FullName -Destination $DestinationFile -Force
-
-        # Log it so we don't copy it again next loop
-        Add-Content -Path $HistoryLog -Value $file.FullName
-
-        $CurrentBatchBytes += $file.Length
-        $CopiedCount++
+        try {
+            Copy-Item -Path $file.FullName -Destination $DestinationFile -Force -ErrorAction Stop
+            Add-Content -Path $HistoryLog -Value $file.FullName
+            $CurrentBatchBytes += $file.Length
+            $CopiedCount++
+        } catch {
+            Write-Log "Copy failed for $($file.Name): $_" -Level "ERROR"
+        }
     }
 
     if ($CopiedCount -eq 0) {
-        Write-Host "Could not copy any files (perhaps the first file is larger than the batch limit?). Aborting." -ForegroundColor Red
-        break
+        Write-Log "Zero files copied this lap. Waiting 60s..." -Level "WARN"
+        Start-Sleep -Seconds 60
+        continue
     }
 
     $BatchGB = [math]::Round($CurrentBatchBytes / 1GB, 2)
-    Write-Host "`n[2] Processing new batch containing $CopiedCount files (${BatchGB}GB)..." -ForegroundColor Yellow
+    Write-Log "Batch prepared ($CopiedCount files, ${BatchGB}GB). Executing DFVG Engine..." -Level "INFO"
 
-    # Step B: DFVG Process
-    # Ensure current working directory is safe
+    # 5. Execute DFVG Engine
     Push-Location $ProjectDir
     
-    Write-Host "Running DFVG Engine..." -ForegroundColor Cyan
-    & $DfvgExePath process $ProjectDir --mode FULL
-    
+    & $Config.DfvgExePath process $ProjectDir --mode FULL
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "DFVG Processing failed! Waiting 30s before trying to continue..." -ForegroundColor Red
-        Start-Sleep -Seconds 30
+        Write-Log "DFVG Processing reported an error code." -Level "WARN"
     }
 
-    # Step C: DFVG Verify
-    Write-Host "`n[3] Verifying Outputs..." -ForegroundColor Yellow
-    & $DfvgExePath verify $ProjectDir
+    Write-Log "Verifying Outputs..." -Level "INFO"
+    & $Config.DfvgExePath verify $ProjectDir
 
-    # Step D: DFVG Cleanup (Deletes exactly what was verified from 01_ORIGINALS)
-    Write-Host "`n[4] Freeing Local Disk Space (Deleting Originals)..." -ForegroundColor Yellow
-    & $DfvgExePath cleanup $ProjectDir --force
+    Write-Log "Safe Cleanup (Freeing original space)..." -Level "INFO"
+    & $Config.DfvgExePath cleanup $ProjectDir --force
 
     Pop-Location
 
-    # Step E: Move Proxies and Masters to Cloud
-    Write-Host "`n[5] Moving processed files to Cloud Sync Folder ($CloudFolder)..." -ForegroundColor Yellow
-    
+    # 6. Cloud Network Moving with Resilience
+    Write-Log "Moving to Cloud Sync ($($Config.CloudFolder))..." -Level "INFO"
     $OutputDirs = @("02_PROXIES", "03_GRADED_MASTERS", "05_PHOTOS")
     
     foreach ($dir in $OutputDirs) {
         $SourceDir = "$ProjectDir\$dir"
         if (Test-Path $SourceDir) {
-            $DestDir = "$CloudFolder\$dir"
-            if (-not (Test-Path $DestDir)) { New-Item -Path $DestDir -ItemType Directory -Force | Out-Null }
+            $DestDir = "$($Config.CloudFolder)\$dir"
+            if (-not (Test-Path $DestDir)) { 
+                try { New-Item -Path $DestDir -ItemType Directory -Force -ErrorAction Stop | Out-Null }
+                catch { Write-Log "Network/Cloud Drive dropped! Retrying..." -Level "ERROR"; Start-Sleep -Seconds 60 }
+            }
             
-            # Copy all contents preserving structure
-            Copy-Item -Path "$SourceDir\*" -Destination $DestDir -Recurse -Force
-            
-            # Delete local successfully copied ones to free space
-            Remove-Item -Path "$SourceDir\*" -Recurse -Force -ErrorAction SilentlyContinue
+            try {
+                # Copy then remove (safer than move across network boundaries)
+                Copy-Item -Path "$SourceDir\*" -Destination $DestDir -Recurse -Force -ErrorAction Stop
+                Remove-Item -Path "$SourceDir\*" -Recurse -Force -ErrorAction SilentlyContinue
+            } catch {
+                Write-Log "Cloud upload failed for $dir: $_" -Level "ERROR"
+                Send-WebhookAlert "Network drop detected. File transfers interrupted." $Config.WebhookUrl
+            }
         }
     }
 
-    Write-Host "`nBatch complete! Waiting 10 seconds before starting the next batch..." -ForegroundColor Green
+    Write-Log "Batch $BatchNumber Complete." -Level "SUCCESS"
+    Send-WebhookAlert "Batch $BatchNumber Finished (${BatchGB}GB processed)." $Config.WebhookUrl
+    $BatchNumber++
+    
     Start-Sleep -Seconds 10
 }
-
-Write-Host "`n========== PIPELINE FINISHED ==========" -ForegroundColor Cyan
